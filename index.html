@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SSO Debugger · decode JWTs and SAML responses</title>
+<meta name="description" content="Decode JWTs and SAML responses, verify signatures, and flag expired tokens, audience mismatches and clock skew. Runs entirely in your browser.">
+<style>
+:root{
+  --bg:#0b0d10;--panel:#12151a;--panel2:#171b21;--line:#232830;--line2:#2d333d;
+  --text:#e6e8eb;--muted:#8b93a1;--dim:#5f6774;
+  --ok:#3fb950;--warn:#d29922;--bad:#f85149;--info:#58a6ff;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,"Helvetica Neue",Arial,sans-serif;
+  --r:10px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
+a{color:var(--accent)}
+.wrap{max-width:1240px;margin:0 auto;padding:28px 24px 56px}
+header.top{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+.brand{display:flex;align-items:center;gap:12px}
+.mark{width:38px;height:38px;border-radius:9px;background:var(--accent);display:grid;place-items:center;color:#0b0d10;font:700 15px var(--mono);letter-spacing:-.5px;flex:none}
+h1{font-size:20px;margin:0;letter-spacing:-.2px}
+.tag{color:var(--muted);margin:2px 0 0;font-size:13.5px}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+button,.btn{appearance:none;border:1px solid var(--line2);background:var(--panel2);color:var(--text);font:500 13px var(--sans);padding:7px 12px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+button:hover,.btn:hover{border-color:var(--dim)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#0b0d10;font-weight:600}
+button.primary:hover{filter:brightness(1.08)}
+button.ghost{background:transparent}
+.grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:16px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.panel>.hd{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);font:600 12px var(--mono);text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+.panel>.bd{padding:14px}
+textarea,input[type=text],input[type=number],select{width:100%;background:var(--bg);border:1px solid var(--line2);border-radius:8px;color:var(--text);font:12.5px/1.55 var(--mono);padding:10px 11px;outline:none}
+textarea{resize:vertical;min-height:260px}
+textarea:focus,input:focus,select:focus{border-color:var(--accent)}
+label.f{display:block;font:600 11.5px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 6px}
+.row{display:flex;gap:10px}.row>*{flex:1}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:14px}
+.stat{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:10px 12px}
+.stat .k{font:600 11px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.stat .v{font:600 20px var(--sans);margin-top:2px;letter-spacing:-.3px}
+.stat.bad .v{color:var(--bad)}.stat.warn .v{color:var(--warn)}.stat.ok .v{color:var(--ok)}
+.findings{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.finding{display:flex;gap:10px;align-items:flex-start;background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--info);border-radius:8px;padding:9px 12px}
+.finding.bad{border-left-color:var(--bad)}.finding.warn{border-left-color:var(--warn)}.finding.ok{border-left-color:var(--ok)}
+.finding b{display:block;font-size:13.5px}
+.finding span{color:var(--muted);font-size:13px}
+.pill{display:inline-block;font:600 11px var(--mono);padding:2px 7px;border-radius:999px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap}
+.pill.bad{color:var(--bad);border-color:#5a2526;background:#2a1213}
+.pill.warn{color:var(--warn);border-color:#4d3a12;background:#261d09}
+.pill.ok{color:var(--ok);border-color:#1f4a2a;background:#0f2416}
+.pill.info{color:var(--info);border-color:#1d3a5c;background:#0d1b2c}
+.empty{color:var(--dim);text-align:center;padding:48px 16px;font-size:13.5px}
+.empty b{display:block;color:var(--muted);font-size:14.5px;margin-bottom:4px}
+code,.mono{font-family:var(--mono);font-size:12.5px}
+.kv{display:grid;grid-template-columns:minmax(110px,max-content) 1fr;gap:6px 14px;font-size:13px}
+.kv dt{color:var(--muted);font-family:var(--mono);font-size:12px;padding-top:1px}
+.kv dd{margin:0;word-break:break-all}
+.note{color:var(--dim);font-size:12.5px;margin-top:10px}
+footer.foot{margin-top:28px;color:var(--dim);font-size:12.5px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;border-top:1px solid var(--line);padding-top:14px}
+footer.foot a{color:var(--muted)}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--panel2);border:1px solid var(--line2);padding:8px 14px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;font-size:13px}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.tabs{display:flex;gap:4px;padding:4px;background:var(--bg);border:1px solid var(--line);border-radius:9px;width:max-content}
+.tabs button{border:0;background:transparent;color:var(--muted);padding:6px 14px}
+.tabs button.on{background:var(--panel2);color:var(--text);box-shadow:inset 0 0 0 1px var(--line2)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chips button{padding:4px 10px;font-size:12px;border-radius:999px}
+.chips button.on{border-color:var(--accent);color:var(--accent)}
+pre.out{margin:0;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;font:12.5px/1.55 var(--mono);white-space:pre-wrap;word-break:break-word;max-height:420px;overflow:auto}
+h3.sec{font:600 12px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 8px}
+h3.sec:first-child{margin-top:0}
+
+:root{--accent:#f5b041}
+.jwtcolor{font:12.5px/1.6 var(--mono);word-break:break-all;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:14px}
+.jwtcolor .h{color:#f85149}.jwtcolor .p{color:#a371f7}.jwtcolor .s{color:#2dd4bf}
+table.claims{width:100%;border-collapse:collapse;font-size:12.5px}
+table.claims td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+table.claims td:first-child{font-family:var(--mono);color:var(--accent);white-space:nowrap;width:1%}
+table.claims td:nth-child(2){font-family:var(--mono);word-break:break-all}
+table.claims td:last-child{color:var(--muted)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media (max-width:600px){.two{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><div class="mark">SSO</div><div><h1>SSO Debugger</h1><p class="tag">Decode JWTs and SAML responses. Catch expired tokens, wrong audiences and clock skew before you escalate.</p></div></div>
+    <div class="actions"><div class="tabs" id="tabs"><button data-t="jwt" class="on">JWT / OIDC</button><button data-t="saml">SAML</button></div><button class="primary" id="sample">Load sample</button><button class="ghost" id="clear">Clear</button></div>
+  </header>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="hd"><span id="inLabel">Token</span><span class="pill">stays in your browser</span></div>
+      <div class="bd">
+        <textarea id="raw" spellcheck="false" style="min-height:200px"></textarea>
+        <div class="two">
+          <div><label class="f" id="audL">Expected audience (aud)</label><input type="text" id="aud" placeholder="optional"></div>
+          <div><label class="f" id="issL">Expected issuer (iss)</label><input type="text" id="iss" placeholder="optional"></div>
+        </div>
+        <div class="two">
+          <div><label class="f">Allowed clock skew (s)</label><input type="number" id="skew" value="60" min="0"></div>
+          <div id="secretBox"><label class="f">Verify signature with</label><input type="text" id="secret" placeholder="HS256 secret or RSA public key PEM"></div>
+        </div>
+        <p class="note" id="hint"></p>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="hd">Result <span id="meta" class="mono" style="text-transform:none;letter-spacing:0"></span></div>
+      <div class="bd" id="out"></div>
+    </div>
+  </div>
+  <footer class="foot"><span>Built by <a href="https://github.com/rajprasad19">Raj Prasad</a> for the "SSO is broken for everyone" tickets.</span><span>Never paste production secrets into websites you don't control. This one has no backend · <a href="https://github.com/rajprasad19/sso-debugger">source</a></span></footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $=s=>document.querySelector(s);let mode='jwt';
+const EMPTY={jwt:'<div class="empty"><b>Paste a JWT</b>An ID token, access token or any eyJ… string. Or load the sample.</div>',saml:'<div class="empty"><b>Paste a SAMLResponse</b>Base64 from the POST body, a deflated redirect value, or raw XML. Or load the sample.</div>'};
+const HINT={jwt:'Grab tokens from DevTools → Network (Authorization: Bearer …) or the IdP\'s token response. Signature checks use the browser\'s Web Crypto API and support HS256/384/512 and RS256/384/512.',saml:'Grab it from DevTools → Network → the POST to your ACS URL → Payload → SAMLResponse. URL-encoded and deflated (Redirect binding) values are handled too.'};
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1600)}
+function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+const now=()=>Math.floor(Date.now()/1000);
+function rel(sec){const a=Math.abs(sec),s=sec<0?' ago':' from now';if(a<90)return a+'s'+s;if(a<5400)return Math.round(a/60)+' min'+s;if(a<172800)return Math.round(a/3600)+' h'+s;return Math.round(a/86400)+' days'+s}
+function fmtT(ts){return new Date(ts*1000).toISOString().replace('.000Z','Z')+' ('+rel(ts-now())+')'}
+const F=(k,t,d)=>`<div class="finding ${k}"><div><b>${esc(t)}</b><span>${d}</span></div></div>`;
+function b64uDec(s){s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const bin=atob(s);return new Uint8Array([...bin].map(c=>c.charCodeAt(0)))}
+function b64uEnc(bytes){let s='';bytes.forEach(b=>s+=String.fromCharCode(b));return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
+const td=new TextDecoder(),te=new TextEncoder();
+
+const CLAIM={iss:'Issuer: who minted the token',sub:'Subject: the user\'s stable ID at the IdP',aud:'Audience: who the token is meant for',exp:'Expires at',nbf:'Not valid before',iat:'Issued at',jti:'Unique token ID (replay protection)',azp:'Authorized party (client ID)',scope:'Granted scopes',scp:'Granted scopes',email:'Email',email_verified:'Whether the IdP verified the email',name:'Display name',nonce:'Nonce echoed from the auth request (OIDC replay protection)',auth_time:'When the user actually authenticated',amr:'Authentication methods used (pwd, mfa, …)',acr:'Authentication context class',sid:'IdP session ID',tid:'Tenant ID (Azure AD / Entra)',oid:'Object ID (Entra)',groups:'Group memberships',roles:'App roles',preferred_username:'Username',cid:'Client ID (Okta)',uid:'User ID (Okta)',ver:'Token version',client_id:'Client ID'};
+const TIMEC=['exp','nbf','iat','auth_time'];
+
+async function verifyJWT(alg,input,sig,key){
+  const hash={256:'SHA-256',384:'SHA-384',512:'SHA-512'}[alg.slice(2)];if(!hash)return['info','Signature not checked',`Algorithm ${esc(alg)} isn't supported here. HS* and RS* are.`];
+  try{
+    if(alg.startsWith('HS')){const k=await crypto.subtle.importKey('raw',te.encode(key),{name:'HMAC',hash},false,['verify']);return await crypto.subtle.verify('HMAC',k,sig,te.encode(input))?['ok','Signature valid','The token was signed with this secret and hasn\'t been modified.']:['bad','Signature invalid','The secret doesn\'t match, or the token was altered. Check that the app and the IdP share the same client secret.']}
+    if(alg.startsWith('RS')){const pem=key.replace(/-----[^-]+-----/g,'').replace(/\s+/g,'');const der=Uint8Array.from(atob(pem),c=>c.charCodeAt(0));const k=await crypto.subtle.importKey('spki',der,{name:'RSASSA-PKCS1-v1_5',hash},false,['verify']);return await crypto.subtle.verify('RSASSA-PKCS1-v1_5',k,sig,te.encode(input))?['ok','Signature valid','Verified against the public key you provided.']:['bad','Signature invalid','This public key didn\'t sign the token. The IdP may have rotated keys, so refresh the app\'s JWKS cache.']}
+  }catch(e){return['warn','Couldn\'t use that key',esc(e.message||String(e))+'. For RS* tokens, paste a "-----BEGIN PUBLIC KEY-----" PEM.']}
+  return['info','Signature not checked','Unsupported algorithm.'];
+}
+
+async function runJWT(){
+  const tok=$('#raw').value.trim().replace(/^Bearer\s+/i,'');if(!tok){$('#out').innerHTML=EMPTY.jwt;$('#meta').textContent='';return}
+  const parts=tok.split('.');
+  if(parts.length===5)return $('#out').innerHTML=F('info','This is an encrypted JWE, not a JWS','The payload is encrypted, so it can\'t be decoded without the recipient\'s private key. Ask the IdP team, or check whether the app expects an encrypted ID token.');
+  if(parts.length!==3)return $('#out').innerHTML=F('bad','Not a JWT',`Expected 3 dot-separated parts, got ${parts.length}. Opaque access tokens (random strings) can't be decoded. Use the IdP's introspection endpoint instead.`);
+  let h,p;try{h=JSON.parse(td.decode(b64uDec(parts[0])));p=JSON.parse(td.decode(b64uDec(parts[1])))}catch(e){return $('#out').innerHTML=F('bad','Couldn\'t decode',esc(e.message))}
+  const skew=+$('#skew').value||0,t=now(),out=[];
+  if(String(h.alg).toLowerCase()==='none')out.push(['bad','alg is "none"','The token is unsigned. Any library that accepts it is vulnerable. Reject it.']);
+  if(p.exp!=null){if(t>p.exp+skew)out.push(['bad','Token expired',`Expired ${rel(p.exp-t)}${p.iat?`, after a lifetime of ${Math.round((p.exp-p.iat)/60)} min`:''}. The client should refresh it. If this happens right after sign-in, compare the server clock to the IdP clock.`]);else if(p.exp-t<300)out.push(['warn','Expires soon',`${rel(p.exp-t)}.`]);else out.push(['ok','Not expired',`Valid until ${esc(new Date(p.exp*1000).toLocaleString())}.`])}else out.push(['warn','No exp claim','The token never expires. Most validators reject that.']);
+  if(p.nbf!=null&&t+skew<p.nbf)out.push(['bad','Not valid yet (nbf)',`Becomes valid ${rel(p.nbf-t)}. This almost always means the server clock is behind. Check NTP on the server.`]);
+  if(p.iat!=null&&p.iat>t+skew)out.push(['warn','Issued in the future',`iat is ${rel(p.iat-t)}, so the clocks are skewed by about ${p.iat-t}s between the IdP and this machine.`]);
+  const aud=$('#aud').value.trim();if(aud){const list=[].concat(p.aud||[]);out.push(list.includes(aud)?['ok','Audience matches',`aud includes ${esc(aud)}.`]:['bad','Audience mismatch',`The token is for <code>${esc(list.join(', ')||'(none)')}</code>, not <code>${esc(aud)}</code>. Usually the wrong client ID or API identifier was configured on one side.`])}
+  const iss=$('#iss').value.trim();if(iss){out.push(p.iss===iss||p.iss===iss.replace(/\/$/,'')||p.iss+'/'===iss?['ok','Issuer matches','']:['bad','Issuer mismatch',`Got <code>${esc(p.iss)}</code>. Watch for trailing slashes, the wrong tenant, or the default authorization server vs a custom one (Okta).`])}
+  const key=$('#secret').value.trim();let sigF=null;
+  if(key)sigF=await verifyJWT(String(h.alg),parts[0]+'.'+parts[1],b64uDec(parts[2]),key);else sigF=['info','Signature not verified',`Paste the ${String(h.alg).startsWith('HS')?'shared secret':'IdP public key (from its JWKS, kid '+esc(h.kid||'?')+')'} to verify it. Decoding a token doesn't prove it's authentic.`];
+  out.push(sigF);
+  const order={bad:0,warn:1,ok:2,info:3};out.sort((a,b)=>order[a[0]]-order[b[0]]);
+  const bad=out.filter(o=>o[0]==='bad').length;
+  $('#meta').textContent=`${h.alg} · ${h.typ||'JWT'}${h.kid?' · kid '+h.kid:''}`;
+  const row=(k,v)=>`<tr><td>${esc(k)}</td><td>${esc(TIMEC.includes(k)&&typeof v==='number'?fmtT(v):typeof v==='object'?JSON.stringify(v):v)}</td><td>${esc(CLAIM[k]||'')}</td></tr>`;
+  $('#out').innerHTML=`<div class="stats"><div class="stat ${bad?'bad':'ok'}"><div class="k">Verdict</div><div class="v">${bad?'Will fail':'Looks OK'}</div></div><div class="stat"><div class="k">Algorithm</div><div class="v">${esc(h.alg)}</div></div><div class="stat ${p.exp&&t>p.exp?'bad':''}"><div class="k">Lifetime left</div><div class="v">${p.exp?(p.exp>t?rel(p.exp-t).replace(' from now',''):'expired'):'∞'}</div></div></div>
+  <div class="findings">${out.map(o=>F(...o)).join('')}</div>
+  <h3 class="sec">Token</h3><div class="jwtcolor"><span class="h">${esc(parts[0])}</span>.<span class="p">${esc(parts[1])}</span>.<span class="s">${esc(parts[2])}</span></div>
+  <h3 class="sec">Header</h3><table class="claims">${Object.entries(h).map(([k,v])=>row(k,v)).join('')}</table>
+  <h3 class="sec">Claims</h3><table class="claims">${Object.entries(p).map(([k,v])=>row(k,v)).join('')}</table>`;
+}
+
+async function inflateRaw(bytes){const ds=new DecompressionStream('deflate-raw');const s=new Blob([bytes]).stream().pipeThrough(ds);return td.decode(await new Response(s).arrayBuffer())}
+async function samlXML(v){
+  v=v.trim();if(v.startsWith('<'))return v;
+  if(/^SAMLResponse=/i.test(v))v=v.replace(/^SAMLResponse=/i,'').split('&')[0];
+  if(/%[0-9A-F]{2}/i.test(v))v=decodeURIComponent(v);
+  v=v.replace(/\s+/g,'');let bytes;try{bytes=Uint8Array.from(atob(v),c=>c.charCodeAt(0))}catch{throw new Error('Not valid base64 or XML.')}
+  const txt=td.decode(bytes);if(txt.trim().startsWith('<'))return txt;
+  try{return await inflateRaw(bytes)}catch{throw new Error('Base64 decoded, but the result isn\'t XML and isn\'t deflated either.')}
+}
+const NS={p:'urn:oasis:names:tc:SAML:2.0:protocol',a:'urn:oasis:names:tc:SAML:2.0:assertion',ds:'http://www.w3.org/2000/09/xmldsig#'};
+async function runSAML(){
+  const v=$('#raw').value;if(!v.trim()){$('#out').innerHTML=EMPTY.saml;$('#meta').textContent='';return}
+  let xml;try{xml=await samlXML(v)}catch(e){return $('#out').innerHTML=F('bad','Couldn\'t decode',esc(e.message))}
+  const doc=new DOMParser().parseFromString(xml,'application/xml');if(doc.querySelector('parsererror'))return $('#out').innerHTML=F('bad','Invalid XML','The decoded value isn\'t well-formed XML.');
+  const q=(ns,tag,root=doc)=>root.getElementsByTagNameNS(NS[ns],tag)[0];const qa=(ns,tag,root=doc)=>[...root.getElementsByTagNameNS(NS[ns],tag)];
+  const resp=q('p','Response'),asr=q('a','Assertion'),enc=q('a','EncryptedAssertion');
+  const req=q('p','AuthnRequest');if(req&&!resp)return $('#out').innerHTML=F('info','This is an AuthnRequest, not a response',`Sent by <code>${esc(q('a','Issuer',req)?.textContent)}</code> to <code>${esc(req.getAttribute('Destination'))}</code>, asking for the response at <code>${esc(req.getAttribute('AssertionConsumerServiceURL')||'(default ACS)')}</code>.`);
+  const skew=+$('#skew').value||0,t=now(),out=[],ts=s=>s?Math.floor(Date.parse(s)/1000):null;
+  const status=q('p','StatusCode')?.getAttribute('Value')||'';const sub=q('p','StatusCode',q('p','StatusCode')||doc)?.getAttribute('Value');const smsg=q('p','StatusMessage')?.textContent;
+  if(status&&!status.endsWith(':Success'))out.push(['bad','IdP returned an error status',`<code>${esc(status.split(':').pop())}</code>${sub&&sub!==status?' / <code>'+esc(sub.split(':').pop())+'</code>':''}${smsg?' · '+esc(smsg):''}. The IdP refused the login. Check whether the user is assigned to the app in the IdP.`]);
+  if(enc&&!asr)out.push(['info','Assertion is encrypted','The attributes can\'t be read without the SP\'s private key. Status and destination are still checked below.']);
+  const respSigned=resp&&[...resp.children].some(c=>c.localName==='Signature'),asrSigned=asr&&[...asr.children].some(c=>c.localName==='Signature');
+  if(asr&&!respSigned&&!asrSigned)out.push(['bad','Nothing is signed','Neither the Response nor the Assertion has a signature. A correctly configured SP will reject this.']);
+  else if(asr)out.push(['ok','Signature present',`Signed: ${[respSigned&&'Response',asrSigned&&'Assertion'].filter(Boolean).join(' + ')}. If the SP still says "invalid signature", the IdP certificate in the SP config is probably stale. Compare fingerprints.`]);
+  const cond=q('a','Conditions'),nb=ts(cond?.getAttribute('NotBefore')),na=ts(cond?.getAttribute('NotOnOrAfter'));
+  const scd=q('a','SubjectConfirmationData'),scNa=ts(scd?.getAttribute('NotOnOrAfter'));
+  if(nb&&t+skew<nb)out.push(['bad','Assertion not valid yet',`NotBefore is ${rel(nb-t)}. The SP's clock is behind the IdP's.`]);
+  const exp=[na,scNa].filter(Boolean);if(exp.length){const m=Math.min(...exp);out.push(t>m+skew?['bad','Assertion expired',`NotOnOrAfter was ${rel(m-t)}. Usually a replayed or old response, or clock skew on the SP.`]:['ok','Within validity window',`Expires ${rel(m-t)}.`])}
+  const audE=$('#aud').value.trim(),audG=qa('a','Audience').map(a=>a.textContent.trim());
+  if(audE)out.push(audG.includes(audE)?['ok','Audience matches SP entity ID','']:['bad','Audience mismatch',`The IdP sent <code>${esc(audG.join(', ')||'(none)')}</code> but the SP expects <code>${esc(audE)}</code>. Fix the Entity ID / Audience URI in the IdP app config.`]);
+  const issE=$('#iss').value.trim(),issG=(q('a','Issuer',resp||doc)||q('a','Issuer'))?.textContent.trim();
+  if(issE)out.push(issG===issE?['ok','Issuer matches','']:['bad','Issuer mismatch',`Got <code>${esc(issG)}</code>. The SP is probably configured for a different IdP app or tenant.`]);
+  const dest=resp?.getAttribute('Destination'),rec=scd?.getAttribute('Recipient');
+  if(dest&&rec&&dest!==rec)out.push(['warn','Destination and Recipient differ',`<code>${esc(dest)}</code> vs <code>${esc(rec)}</code>. Many SPs require both to equal the ACS URL exactly, including http vs https and trailing slashes.`]);
+  const nid=q('a','NameID'),fmt=nid?.getAttribute('Format')?.split(':').pop();
+  if(nid&&!nid.textContent.trim())out.push(['bad','Empty NameID','The IdP didn\'t send a user identifier. Check the NameID mapping in the IdP.']);
+  const order={bad:0,warn:1,ok:2,info:3};out.sort((a,b)=>order[a[0]]-order[b[0]]);
+  const attrs=qa('a','Attribute').map(a=>[a.getAttribute('FriendlyName')||a.getAttribute('Name'),qa('a','AttributeValue',a).map(x=>x.textContent).join(', ')]);
+  const bad=out.filter(o=>o[0]==='bad').length;
+  $('#meta').textContent=(issG||'')+(fmt?' · NameID '+fmt:'');
+  const kv=(k,v)=>v?`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`:'';
+  $('#out').innerHTML=`<div class="stats"><div class="stat ${bad?'bad':'ok'}"><div class="k">Verdict</div><div class="v">${bad?'Will fail':'Looks OK'}</div></div><div class="stat ${status.endsWith('Success')?'ok':'bad'}"><div class="k">Status</div><div class="v">${esc(status.split(':').pop()||'?')}</div></div><div class="stat"><div class="k">Attributes</div><div class="v">${attrs.length}</div></div></div>
+  <div class="findings">${out.map(o=>F(...o)).join('')}</div>
+  <h3 class="sec">Summary</h3><dl class="kv">${kv('Issuer',issG)}${kv('NameID',nid?.textContent.trim())}${kv('NameID format',fmt)}${kv('Audience',audG.join(', '))}${kv('Destination',dest)}${kv('Recipient',rec)}${kv('InResponseTo',resp?.getAttribute('InResponseTo')||'(IdP-initiated)')}${kv('Issued',resp?.getAttribute('IssueInstant'))}${kv('NotBefore',cond?.getAttribute('NotBefore'))}${kv('NotOnOrAfter',cond?.getAttribute('NotOnOrAfter'))}${kv('AuthnInstant',q('a','AuthnStatement')?.getAttribute('AuthnInstant'))}${kv('AuthnContext',q('a','AuthnContextClassRef')?.textContent.split(':').pop())}</dl>
+  ${attrs.length?`<h3 class="sec">Attributes</h3><table class="claims">${attrs.map(([k,v])=>`<tr><td>${esc(k)}</td><td>${esc(v)}</td><td></td></tr>`).join('')}</table>`:''}
+  <h3 class="sec">Decoded XML</h3><pre class="out">${esc(pretty(xml))}</pre>`;
+}
+function pretty(x){let d=0;return x.replace(/>\s*</g,'><').replace(/(<\/?[^>]+>)/g,'\n$1\n').split('\n').filter(s=>s.trim()).map(s=>{if(s.startsWith('</'))d--;const l='  '.repeat(Math.max(d,0))+s;if(s.startsWith('<')&&!s.startsWith('</')&&!s.endsWith('/>')&&!s.startsWith('<?'))d++;return l}).join('\n').replace(/(<([\w:]+)[^>]*>)\n\s*([^<\n]+)\n\s*(<\/\2>)/g,'$1$3$4')}
+
+async function sampleJWT(){
+  const h={alg:'HS256',typ:'JWT',kid:'demo-key-1'},t=now();
+  const p={iss:'https://login.acmecloud.io/oauth2/default',sub:'00u8x2northwind',aud:'api://acmecloud-web',iat:t-3900,exp:t-300,auth_time:t-3905,scope:'openid profile email',email:'dana@northwind.co',email_verified:true,name:'Dana Whitfield',groups:['Everyone','Northwind-Admins'],amr:['pwd','mfa'],cid:'0oa1acmewebclient'};
+  const enc=o=>b64uEnc(te.encode(JSON.stringify(o)));const input=enc(h)+'.'+enc(p);
+  const k=await crypto.subtle.importKey('raw',te.encode('demo-secret'),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+  return input+'.'+b64uEnc(new Uint8Array(await crypto.subtle.sign('HMAC',k,te.encode(input))));
+}
+function sampleSAML(){
+  const t=Date.now(),iso=ms=>new Date(ms).toISOString().replace(/\.\d+Z/,'Z');
+  const xml=`<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="_f2c1a9e0" Version="2.0" IssueInstant="${iso(t-60000)}" Destination="https://app.acmecloud.io/sso/saml/acs" InResponseTo="_req8841"><saml:Issuer>http://www.okta.com/exk1northwind</saml:Issuer><samlp:Status><samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/></samlp:Status><saml:Assertion ID="_a77d01" Version="2.0" IssueInstant="${iso(t-60000)}"><saml:Issuer>http://www.okta.com/exk1northwind</saml:Issuer><ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#"><ds:SignedInfo><ds:CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/><ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/></ds:SignedInfo><ds:SignatureValue>c2FtcGxlLXNpZ25hdHVyZS1ub3QtcmVhbA==</ds:SignatureValue></ds:Signature><saml:Subject><saml:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress">dana@northwind.co</saml:NameID><saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer"><saml:SubjectConfirmationData NotOnOrAfter="${iso(t+240000)}" Recipient="https://app.acmecloud.io/sso/saml/acs/" InResponseTo="_req8841"/></saml:SubjectConfirmation></saml:Subject><saml:Conditions NotBefore="${iso(t-120000)}" NotOnOrAfter="${iso(t+240000)}"><saml:AudienceRestriction><saml:Audience>https://acmecloud.io/saml/metadata</saml:Audience></saml:AudienceRestriction></saml:Conditions><saml:AuthnStatement AuthnInstant="${iso(t-62000)}" SessionIndex="_s91"><saml:AuthnContext><saml:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport</saml:AuthnContextClassRef></saml:AuthnContext></saml:AuthnStatement><saml:AttributeStatement><saml:Attribute Name="email"><saml:AttributeValue>dana@northwind.co</saml:AttributeValue></saml:Attribute><saml:Attribute Name="firstName"><saml:AttributeValue>Dana</saml:AttributeValue></saml:Attribute><saml:Attribute Name="lastName"><saml:AttributeValue>Whitfield</saml:AttributeValue></saml:Attribute><saml:Attribute Name="groups"><saml:AttributeValue>Northwind-Admins</saml:AttributeValue><saml:AttributeValue>Everyone</saml:AttributeValue></saml:Attribute></saml:AttributeStatement></saml:Assertion></samlp:Response>`;
+  return btoa(xml);
+}
+
+const run=()=>mode==='jwt'?runJWT():runSAML();
+function setMode(m){mode=m;document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===m));
+  $('#inLabel').textContent=m==='jwt'?'Token':'SAMLResponse';$('#raw').placeholder=m==='jwt'?'eyJhbGciOi… (a "Bearer " prefix is fine)':'PHNhbWxwOlJlc3BvbnNl… or <samlp:Response …>';
+  $('#audL').textContent=m==='jwt'?'Expected audience (aud)':'Expected SP entity ID';$('#issL').textContent=m==='jwt'?'Expected issuer (iss)':'Expected IdP issuer';
+  $('#secretBox').style.visibility=m==='jwt'?'visible':'hidden';$('#hint').textContent=HINT[m];$('#raw').value='';$('#aud').value='';$('#iss').value='';$('#secret').value='';$('#out').innerHTML=EMPTY[m];$('#meta').textContent=''}
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>setMode(b.dataset.t));
+$('#sample').onclick=async()=>{if(mode==='jwt'){$('#raw').value=await sampleJWT();$('#aud').value='api://acmecloud-api';$('#iss').value='https://login.acmecloud.io/oauth2/default';$('#secret').value='demo-secret';toast('Sample: an expired token with the wrong audience')}else{$('#raw').value=sampleSAML();$('#aud').value='https://app.acmecloud.io/saml/metadata';$('#iss').value='http://www.okta.com/exk1northwind';toast('Sample: an Okta response with a misconfigured audience')}run()};
+$('#clear').onclick=()=>setMode(mode);
+let deb;['raw','aud','iss','skew','secret'].forEach(id=>$('#'+id).addEventListener('input',()=>{clearTimeout(deb);deb=setTimeout(run,250)}));
+setMode(location.hash==='#saml'?'saml':'jwt');if(location.hash.startsWith('#sample')||location.hash==='#saml')$('#sample').click();
+</script>
+</body>
+</html>
